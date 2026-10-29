@@ -2,7 +2,9 @@
 
 **Course:** PFEBSIT 002 Integrative Programming and Technologies 2
 **Project:** Project 20 - Community Service Hours Tracker
-**Student:** [Your Full Name] | **ID:** [Your ID Number] | **Section:** [Your Section]
+**Student:** Charmagne Jamaica Marcos | 
+**ID:** 24-10337 | 
+**Section:** BIST 3A
 **Institution:** University of La Salette, Inc. - College of Information Technology
 
 ## Overview
