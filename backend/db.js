@@ -21,6 +21,9 @@ function getPool() {
       waitForConnections: true,
       connectionLimit: 5,
       decimalNumbers: true, // return DECIMAL columns as numbers, not strings
+      // Read and write dates as UTC. Without this, a DATE column such as 2026-12-15 is read as
+      // local midnight and can shift by one day for computers that are not on UTC.
+      timezone: 'Z',
     });
   }
   return pool;
