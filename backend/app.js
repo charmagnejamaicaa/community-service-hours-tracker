@@ -4,14 +4,17 @@ const express = require('express');
 const cors = require('cors');
 const crypto = require('node:crypto');
 const { computeProgress } = require('./hoursService');
+const { buildProgressSummary } = require('./progressSummary');
 
 /**
  * Builds the Express app. Dependencies are passed in so tests can use fakes:
- *   getPool - returns the MySQL pool (see db.js)
- *   store   - notification store (MySQL or in-memory)
- *   logger  - structured logger (see logger.js)
+ *   getPool   - returns the MySQL pool (see db.js)
+ *   store     - notification store (MySQL or in-memory)
+ *   logger    - structured logger (see logger.js)
+ *   repo      - job queries (see repoMysql.js)
+ *   jobRunner - runs the daily job (see scheduler.js)
  */
-function createApp({ getPool, store, logger }) {
+function createApp({ getPool, store, logger, repo, jobRunner }) {
   const app = express();
   app.use(cors());
   app.use(express.json());
@@ -79,6 +82,39 @@ function createApp({ getPool, store, logger }) {
     } catch (err) {
       logger.error('progress_failed', { referenceId: req.referenceId, studentId, reason: err.message });
       sendError(req, res, 500, 'SERVER_ERROR', 'Something went wrong. Please try again.');
+    }
+  });
+
+  // --- Progress summary for all students (coordinator / adviser) ---
+  app.get('/api/summaries/progress', async (req, res) => {
+    try {
+      const students = await repo.listStudentsWithHours();
+      res.json(buildProgressSummary(students, new Date()));
+    } catch (err) {
+      logger.error('summary_failed', { referenceId: req.referenceId, reason: err.message });
+      sendError(req, res, 500, 'SERVER_ERROR', 'Something went wrong. Please try again.');
+    }
+  });
+
+  // --- Run the daily job now (for demos and testing) ---
+  // Week 13 only: the role comes from a demo header. Real authentication and authorization
+  // replace this in Week 14.
+  app.post('/api/jobs/run', async (req, res) => {
+    const role = String(req.get('X-Demo-Role') || '').toLowerCase();
+    if (role !== 'coordinator') {
+      logger.warn('job_run_forbidden', { referenceId: req.referenceId });
+      return sendError(req, res, 403, 'FORBIDDEN', 'Only a coordinator can run the job.');
+    }
+
+    try {
+      const outcome = await jobRunner.runOnce('manual');
+      if (outcome.skipped) {
+        return sendError(req, res, 409, 'JOB_RUNNING', 'The job is already running. Try again in a moment.');
+      }
+      res.json(outcome.result);
+    } catch (err) {
+      logger.error('job_run_error', { referenceId: req.referenceId, reason: err.message });
+      sendError(req, res, 500, 'SERVER_ERROR', 'The job failed. Check the server logs.');
     }
   });
 
