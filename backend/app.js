@@ -5,6 +5,7 @@ const cors = require('cors');
 const crypto = require('node:crypto');
 const { computeProgress } = require('./hoursService');
 const { buildProgressSummary } = require('./progressSummary');
+const { registerWorkflowRoutes } = require('./workflowRoutes');
 
 /**
  * Builds the Express app. Dependencies are passed in so tests can use fakes:
@@ -13,8 +14,9 @@ const { buildProgressSummary } = require('./progressSummary');
  *   logger    - structured logger (see logger.js)
  *   repo      - job queries (see repoMysql.js)
  *   jobRunner - runs the daily job (see scheduler.js)
+ *   workflowRepo - activities and submissions (see workflowRepo.js)
  */
-function createApp({ getPool, store, logger, repo, jobRunner }) {
+function createApp({ getPool, store, logger, repo, jobRunner, workflowRepo }) {
   const app = express();
   app.use(cors());
   app.use(express.json());
@@ -117,6 +119,11 @@ function createApp({ getPool, store, logger, repo, jobRunner }) {
       sendError(req, res, 500, 'SERVER_ERROR', 'The job failed. Check the server logs.');
     }
   });
+
+  // --- Activities and submissions: register, submit, verify, approve, correct ---
+  if (workflowRepo) {
+    registerWorkflowRoutes(app, { workflowRepo, logger, sendError, parseId });
+  }
 
   // --- Manual review queue: notifications that failed permanently ---
   // The message text is NOT returned (data minimization): the coordinator only needs to know

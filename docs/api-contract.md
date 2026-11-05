@@ -1,85 +1,147 @@
-# API Contract (Draft for Week 13)
+# API Contract (Week 13)
 
 **Project 20 - Community Service Hours Tracker** | SA7 Week 13
 
-Base path: `/api` | Format: JSON | Dates: ISO 8601
-Authentication and role enforcement are added in Week 14. In Week 13, the role is passed in a demo header (`X-Demo-Role`) for testing only.
+Base path: `/api` | Format: JSON | Dates: `YYYY-MM-DD` (dates) or ISO 8601 (timestamps)
+
+**Roles (Week 13 stand-in):** the caller's role is sent in the header `X-Demo-Role` with the value `student`, `supervisor`, or `coordinator`. This is for testing only. Real authentication and role enforcement replace it in Week 14.
 
 ## Endpoints
 
-| Method | Path | Role | Description |
-| --- | --- | --- | --- |
-| POST | `/activities` | Student | Register an activity |
-| POST | `/activities/{id}/submissions` | Student | Submit hours and evidence |
-| GET | `/submissions?status=SUBMITTED` | Supervisor | List submissions awaiting verification |
-| PATCH | `/submissions/{id}/verify` | Supervisor | Verify or reject (with reason) |
-| PATCH | `/submissions/{id}/approve` | Coordinator | Approve verified hours |
-| PATCH | `/submissions/{id}/correct` | Coordinator | Return a submission for correction |
-| GET | `/students/{id}/progress` | Student, Coordinator, Adviser | Required, approved, pending, remaining hours |
-| GET | `/summaries/progress` | Coordinator, Adviser | Progress summary for all students |
-| GET | `/notifications/failed` | Coordinator | Manual-review queue |
-| PATCH | `/notifications/{id}/handled` | Coordinator | Mark a failed notification as handled |
-| POST | `/jobs/run` | Coordinator | Run the daily automation on demand |
-| GET | `/health` | Public | Health check |
+| Method | Path | Role | Description | Status |
+| --- | --- | --- | --- | --- |
+| POST | `/activities` | student | Register an activity | Built |
+| POST | `/activities/{id}/submissions` | student | Submit hours and evidence | Built |
+| GET | `/submissions?status=SUBMITTED` | supervisor, coordinator | List submissions by status | Built |
+| PATCH | `/submissions/{id}/verify` | supervisor | Verify or reject (reason required to reject) | Built |
+| PATCH | `/submissions/{id}/approve` | coordinator | Approve verified hours; returns remaining hours | Built |
+| PATCH | `/submissions/{id}/correct` | coordinator | Return a verified submission for correction (reason required) | Built |
+| PATCH | `/submissions/{id}/resubmit` | student | Send a corrected submission again | Built |
+| GET | `/students/{id}/progress` | student, coordinator, adviser | Required, approved, pending, remaining hours | Built |
+| GET | `/summaries/progress` | coordinator, adviser | Progress summary for all students | Built |
+| GET | `/notifications/failed` | coordinator | Manual review queue | Built |
+| PATCH | `/notifications/{id}/handled` | coordinator | Mark a failed notification as handled | Built |
+| POST | `/jobs/run` | coordinator | Run the daily automation on demand | Built |
+| GET | `/health` | public | Health check | Built |
 
-## Example: Submit Hours
+`/students/{id}/progress`, `/summaries/progress`, and `/notifications/*` do not check the demo role yet (Week 14).
 
-`POST /api/activities/12/submissions`
+## Workflow states
 
-```json
-{
-  "hours": 4.5,
-  "serviceDate": "2026-10-25",
-  "evidenceNote": "Tree planting at barangay site, signed attendance sheet photo"
-}
+```
+SUBMITTED --verify--> VERIFIED --approve--> APPROVED   (final)
+SUBMITTED --reject--> REJECTED
+VERIFIED  --correct--> REJECTED
+REJECTED  --resubmit--> SUBMITTED
 ```
 
+Only `APPROVED` hours count toward the requirement. Any other change returns `409 INVALID_STATE`.
+Two people acting on the same submission at the same moment: only the first succeeds, the second gets `409`.
+
+## Examples
+
+### Register an activity
+`POST /api/activities` (role: student)
+```json
+{ "studentId": 1, "name": "Tree Planting", "organization": "Sample Barangay Council", "activityDate": "2026-11-03" }
+```
 Response `201 Created`:
-
 ```json
-{
-  "id": 87,
-  "status": "SUBMITTED",
-  "hours": 4.5,
-  "createdAt": "2026-10-29T12:00:00Z"
-}
+{ "id": 12, "studentId": 1, "name": "Tree Planting", "organization": "Sample Barangay Council", "activityDate": "2026-11-03" }
 ```
 
-## Example: Progress
+### Submit hours
+`POST /api/activities/12/submissions` (role: student)
+```json
+{ "hours": 4.5, "serviceDate": "2026-11-03", "evidenceNote": "Signed attendance sheet photo" }
+```
+Response `201 Created`:
+```json
+{ "id": 87, "status": "SUBMITTED", "hours": 4.5, "createdAt": "2026-11-04T04:00:00.000Z" }
+```
 
-`GET /api/students/5/progress`
+### Verify or reject
+`PATCH /api/submissions/87/verify` (role: supervisor)
+```json
+{ "decision": "VERIFY" }
+```
+```json
+{ "decision": "REJECT", "reason": "Photo is unreadable" }
+```
+Response `200`: `{ "id": 87, "status": "VERIFIED" }` (or `"REJECTED"`)
 
+### Approve
+`PATCH /api/submissions/87/approve` (role: coordinator)
+
+Response `200`. The remaining hours are recalculated right away (event-driven trigger):
+```json
+{ "id": 87, "status": "APPROVED", "studentId": 1, "remainingHours": 35.5, "progressStatus": "IN_PROGRESS" }
+```
+`progressStatus` is `IN_PROGRESS`, `COMPLETED`, or `OVERDUE`.
+
+### Return for correction, then resubmit
+`PATCH /api/submissions/87/correct` (role: coordinator): `{ "reason": "Hours differ from the attendance sheet" }` -> `{ "id": 87, "status": "REJECTED" }`
+
+`PATCH /api/submissions/87/resubmit` (role: student): `{ "hours": 3.5, "serviceDate": "2026-11-03", "evidenceNote": "New clear photo" }` -> `{ "id": 87, "status": "SUBMITTED" }`
+
+### Progress
+`GET /api/students/1/progress`
 ```json
 {
-  "studentId": 5,
+  "studentId": 1,
   "requiredHours": 40,
   "approvedHours": 22.5,
   "pendingHours": 4.5,
   "remainingHours": 17.5,
+  "percentComplete": 56.25,
+  "daysLeft": 41,
   "deadline": "2026-12-15",
   "status": "IN_PROGRESS"
 }
 ```
-
 `remainingHours = max(requiredHours - approvedHours, 0)` (only approved hours count).
 
-## Validation Rules
+### Run the daily job
+`POST /api/jobs/run` (role: coordinator) returns, for example:
+```json
+{
+  "ranAt": "2026-11-04T00:00:00.000Z",
+  "deadlineReminders": { "considered": 1, "sent": 1, "manualReview": 0, "duplicates": 0, "errors": 0 },
+  "verificationAlerts": { "considered": 1, "sent": 1, "manualReview": 0, "duplicates": 0, "errors": 0 },
+  "summary": { "students": 2, "completed": 0, "inProgress": 1, "overdue": 1, "approvedHours": 52.5, "remainingHours": 27.5 }
+}
+```
+A second call while the job is running returns `409 JOB_RUNNING`.
 
-- `hours`: number greater than 0 and at most 12 per day
+## Validation rules
+
+- `hours`: a number greater than 0 and at most 12
+- Total hours for one student on one date: at most 12 (rejected submissions do not count)
 - `serviceDate`: not in the future; not older than 30 days
-- `evidenceNote`: required, maximum 500 characters
-- Only a `SUBMITTED` entry can be verified; only a `VERIFIED` entry can be approved
+- `evidenceNote`: required, at most 500 characters
+- Activity `name` and `organization`: required, at most 150 characters each
+- `reason` (reject or correct): required, at most 255 characters
+- Only a `SUBMITTED` entry can be verified or rejected; only a `VERIFIED` entry can be approved or returned; only a `REJECTED` entry can be resubmitted
 
-## Error Format
+## Error format
 
 ```json
 {
   "error": {
     "code": "VALIDATION_ERROR",
     "message": "Hours must be greater than 0 and at most 12.",
-    "referenceId": "req-20261029-0042"
+    "details": ["Hours must be greater than 0 and at most 12."],
+    "referenceId": "req-1a2b3c4d"
   }
 }
 ```
+`details` appears on validation errors and lists every problem found. `referenceId` matches the same value in the server logs.
 
-Status codes: `400` validation, `401/403` authentication/authorization (Week 14), `404` not found, `409` invalid state transition, `503` dependency unavailable, `500` server error.
+| Status | Code | Meaning |
+| --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | Invalid input |
+| 403 | `FORBIDDEN` | The role is not allowed to do this (Week 13 demo header) |
+| 404 | `NOT_FOUND` | Student, activity, submission, or notification does not exist |
+| 409 | `INVALID_STATE` | The workflow does not allow this change right now |
+| 409 | `JOB_RUNNING` | The daily job is already running |
+| 500 | `SERVER_ERROR` | Unexpected error (details are only in the server log) |

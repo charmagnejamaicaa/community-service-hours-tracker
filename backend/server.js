@@ -7,6 +7,7 @@ const logger = require('./logger');
 const { getPool } = require('./db');
 const { createMysqlStore } = require('./notificationStoreMysql');
 const { createMysqlRepo } = require('./repoMysql');
+const { createMysqlWorkflowRepo } = require('./workflowRepo');
 const { createFakeProvider } = require('./notificationProvider');
 const { loadJobConfig } = require('./jobConfig');
 const { runDailyJob } = require('./dailyJob');
@@ -16,6 +17,7 @@ const { createApp } = require('./app');
 const config = loadJobConfig(process.env);
 const store = createMysqlStore(getPool);
 const repo = createMysqlRepo(getPool);
+const workflowRepo = createMysqlWorkflowRepo(getPool);
 const provider = createFakeProvider(config.providerMode); // fake provider: no real messages are sent
 
 const jobRunner = createJobRunner({
@@ -23,7 +25,7 @@ const jobRunner = createJobRunner({
   run: () => runDailyJob({ repo, store, provider, logger, config }),
 });
 
-const app = createApp({ getPool, store, logger, repo, jobRunner });
+const app = createApp({ getPool, store, logger, repo, jobRunner, workflowRepo });
 
 const PORT = Number(process.env.PORT) || 3000;
 app.listen(PORT, () => {
