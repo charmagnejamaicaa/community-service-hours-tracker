@@ -13,7 +13,7 @@ Use a **hybrid approach**: event-driven triggers for state changes, and a schedu
 | Remaining-hour calculation | Event-driven | When a coordinator approves or corrects hours | The student should see updated progress immediately; no need to wait for a schedule. |
 | Deadline reminder | Scheduled (daily, 08:00) | Student's deadline is within `REMINDER_DAYS_BEFORE_DEADLINE` days and hours are not complete | Time-based, no user action causes it. |
 | Missing-verification alert | Scheduled (daily, 08:00) | A submission has stayed `SUBMITTED` for more than `VERIFICATION_ALERT_DAYS` days | Detects inaction, which an event cannot detect. |
-| Progress summary | Scheduled (weekly, Monday 08:00) | Weekly | Digest for students, coordinators, and advisers. |
+|The progress summary is calculated every time the daily job runs (08:00, Asia/Manila) and is also available on demand through `GET /api/summaries/progress`, so coordinators and advisers always see current figures.|
 
 ## Alternatives Considered
 
