@@ -164,10 +164,12 @@ class _ProgressView extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             if (progress.daysLeft != null)
-              Text(
-                progress.daysLeft! >= 0
-                    ? '${progress.daysLeft} days left (deadline ${progress.deadline})'
-                    : '${-progress.daysLeft!} days past the deadline (${progress.deadline})',
+              Expanded(
+                child: Text(
+                  progress.daysLeft! >= 0
+                      ? '${progress.daysLeft} days left (deadline ${progress.deadline})'
+                      : '${-progress.daysLeft!} days past the deadline (${progress.deadline})',
+                ),
               ),
           ],
         ),
