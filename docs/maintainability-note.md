@@ -1,6 +1,6 @@
 # Maintainability Note
 
-**Project 20 - Community Service Hours Tracker** | SA7 Week 13
+**Project 20 - Community Service Hours Tracker** | SA7 Week 13, updated in Week 14
 
 **Stack:** Flutter Web (frontend), Laravel 12 on PHP 8.2 (REST API), MySQL (database).
 
@@ -24,17 +24,23 @@ All tunable values live in `.env` and are read in one file, `config/service_hour
 
 ## Testability
 
-- Hours rules, workflow rules, retry policy and the daily job are plain PHP classes with no database or HTTP, so they are unit tested directly (`php artisan test`, 38 unit tests).
+- Hours rules, workflow rules, retry policy and the daily job are plain PHP classes with no database or HTTP, so they are unit tested directly (`php artisan test`: 81 tests including feature tests for sign-in, roles and HTTPS).
 - The notification provider sits behind an interface, so a fake provider simulates timeouts and rejections for the required demonstrations (`php artisan app:demo-failures`).
-- Flutter has 25 widget tests (`flutter test`) with a fake API, so no server is needed.
+- Flutter has 42 tests (`flutter test`) with a fake API and a mock HTTP client, so no server is needed.
 
-## Known Risks (Week 13)
+## Security structure (Week 14)
 
-- The scheduler needs a running process (`php artisan schedule:work`, or a Windows Task Scheduler entry that runs `php artisan schedule:run` every minute). If it is not running at 08:00, that day's job is missed until the next run. The overlap guard and the notification key (which includes the date) make a late or repeated run safe.
-- No authentication yet: the `X-Demo-Role` header is a stand-in (real sign-in and role enforcement are planned for Week 14). Progress, summary and notification endpoints do not check roles yet.
+- **One place per concern:** sign-in in `AuthController`, role checks in `RequireRole`, ownership in `Access` (a plain class with unit tests), HTTPS in `RequireHttps`, headers in `SecurityHeaders`, error format in `ApiExceptionRenderer`, log redaction in `StructuredLog`. Routes list the allowed roles next to each endpoint in `routes/api.php`, so permissions can be reviewed in one file.
+- **Settings in `.env`:** `TOKEN_MINUTES`, `REQUIRE_HTTPS`, `ENABLE_HSTS`, `DEMO_USER_PASSWORD`, all read in `config/service_hours.php`.
+- **Frontend:** one `ApiClient` holds the token and turns every failure (401, 403, 429) into one exception type; screens never read the token.
+
+## Known Risks (Week 14)
+
+- The scheduler needs a running process (`php artisan schedule:work`). If it is not running at 08:00, that day's job is missed until the next run. The overlap guard and the notification key (which includes the date) make a late or repeated run safe.
+- Open security items are listed with reasons and next steps in `docs/security-note.md` (section 6): no multi-factor sign-in, supervisors see all submissions, shared demo password, `root` database user, plain-text evidence notes, local-only HTTPS certificate.
 
 ## Future Improvements
 
 - Move notifications to a Laravel queue and worker if volume grows.
 - Add dashboards for log monitoring (Week 16).
-- Add Laravel feature tests against the database (Week 15).
+- Add Laravel feature tests against MySQL and end-to-end browser tests (Week 15).
