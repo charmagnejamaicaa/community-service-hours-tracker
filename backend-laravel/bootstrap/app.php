@@ -19,18 +19,22 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias(['role' => RequireRole::class]);
+        // This is a JSON API: there is no login page to redirect to, so a missing token must give a 401, not a redirect.
         $middleware->redirectGuestsTo(fn () => null);
         $middleware->api(append: [AssignReferenceId::class]);
         // These two only act on /api/* (they check the path themselves).
-        $middleware->prepend(RequireHttps::class);
+        // RequireHttps must run AFTER Laravel's TrustProxies step, otherwise it never sees the proxy's
+        // X-Forwarded-Proto header and refuses even the HTTPS requests that come through the gateway.
+        $middleware->append(RequireHttps::class);
         $middleware->append(SecurityHeaders::class);
-        // Behind a local HTTPS proxy (Caddy) the proxy's X-Forwarded-Proto header says the request was HTTPS.
-        if (env('TRUST_PROXIES')) {
-            $middleware->trustProxies(at: '*');
-        }
+        // Behind the local HTTPS gateway (Caddy) the gateway's X-Forwarded-Proto header says the request was HTTPS.
+        // Only the computer itself (loopback) is trusted to say so, so a remote client cannot fake the header.
+        // (Not read from .env: this file runs before .env is loaded.)
+        $middleware->trustProxies(at: ['127.0.0.1', '::1']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-         $exceptions->shouldRenderJsonWhen(fn (Request $request, Throwable $e) => $request->is('api/*') || $request->expectsJson());
+        // Always answer /api/* errors as JSON, even when the client sends no Accept header.
+        $exceptions->shouldRenderJsonWhen(fn (Request $request, Throwable $e) => $request->is('api/*') || $request->expectsJson());
         // Every error on /api/* uses the same format: { error: { code, message, details?, referenceId } }
         $exceptions->render(function (Throwable $e, Request $request) {
             return ApiExceptionRenderer::render($e, $request);

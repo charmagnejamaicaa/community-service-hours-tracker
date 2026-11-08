@@ -164,11 +164,19 @@ class AuthorizationTest extends ApiTestCase
             ->assertJsonPath('error.code', 'HTTPS_REQUIRED');
     }
 
-    public function test_https_requests_are_accepted_and_get_hsts(): void
+    public function test_https_requests_are_accepted_and_get_hsts_when_enabled(): void
+    {
+        config(['service_hours.require_https' => true, 'service_hours.hsts' => true]);
+        $response = $this->useToken(null)->getJson('https://localhost/api/health');
+        $response->assertOk();
+        $this->assertStringContainsString('max-age', (string) $response->headers->get('Strict-Transport-Security'));
+    }
+
+    public function test_hsts_is_off_by_default_so_localhost_development_keeps_working(): void
     {
         config(['service_hours.require_https' => true]);
         $response = $this->useToken(null)->getJson('https://localhost/api/health');
         $response->assertOk();
-        $this->assertStringContainsString('max-age', (string) $response->headers->get('Strict-Transport-Security'));
+        $this->assertNull($response->headers->get('Strict-Transport-Security'));
     }
 }

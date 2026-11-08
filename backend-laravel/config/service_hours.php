@@ -18,6 +18,9 @@ return [
     'token_minutes' => max(1, (int) env('TOKEN_MINUTES', 60)),
     // true = every /api request must use HTTPS (otherwise it is answered with 426).
     'require_https' => (bool) env('REQUIRE_HTTPS', false),
+    // true = also send the HSTS header ("always use HTTPS for this host"). Leave false on localhost:
+    // browsers apply HSTS to every port of "localhost" and would then break the Flutter dev server.
+    'hsts' => (bool) env('ENABLE_HSTS', false),
     // Password for the FICTIONAL demo accounts created by `php artisan db:seed`. Keep it in .env only.
     'demo_user_password' => env('DEMO_USER_PASSWORD'),
 ];

@@ -27,7 +27,7 @@ final class SecurityHeaders
         $h->set('Permissions-Policy', 'geolocation=(), camera=(), microphone=()');
         // Responses can contain tokens and personal data: browsers and proxies must not keep a copy.
         $h->set('Cache-Control', 'no-store, private');
-        if ($request->isSecure()) {
+        if ($request->isSecure() && config('service_hours.hsts')) {
             $h->set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
         }
 

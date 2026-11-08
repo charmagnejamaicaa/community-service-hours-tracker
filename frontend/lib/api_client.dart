@@ -33,7 +33,7 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  ApiClient({http.Client? client, this.baseUrl = 'http://localhost:3000'})
+  ApiClient({http.Client? client, this.baseUrl = const String.fromEnvironment('API_BASE_URL', defaultValue: 'https://localhost:8443')})
       : _client = client ?? http.Client();
 
   final String baseUrl;
