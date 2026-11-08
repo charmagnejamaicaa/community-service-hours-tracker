@@ -21,8 +21,9 @@ final class Workflow
     public const STUDENT = 'student';
     public const SUPERVISOR = 'supervisor';
     public const COORDINATOR = 'coordinator';
+    public const ADVISER = 'adviser'; // read-only
 
-    public const ROLES = [self::STUDENT, self::SUPERVISOR, self::COORDINATOR];
+    public const ROLES = [self::STUDENT, self::SUPERVISOR, self::COORDINATOR, self::ADVISER];
     public const STATUSES = ['SUBMITTED', 'VERIFIED', 'APPROVED', 'REJECTED'];
 
     public const TRANSITIONS = [

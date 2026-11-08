@@ -11,6 +11,7 @@ use App\Repositories\DbWorkflowRepository;
 use App\Services\JobRunner;
 use App\Services\ProgressSummary;
 use App\Support\ApiError;
+use App\Support\Access;
 use App\Support\Clock;
 use App\Support\HoursRules;
 use Illuminate\Http\JsonResponse;
@@ -39,6 +40,21 @@ final class ApiController
         $studentId = ApiError::parseId($id);
         if ($studentId === null) {
             return ApiError::response($request, 400, 'VALIDATION_ERROR', 'Student id must be a positive integer.');
+        }
+
+        // Access control: a student may only see their own progress.
+        $user = $request->user();
+        $own = $user->student_id === null ? null : (int) $user->student_id;
+        if (! Access::canViewStudent($user->role, $own, $studentId)) {
+            $this->logger->warn('access_denied', [
+                'referenceId' => ApiError::refId($request),
+                'userId' => $user->id,
+                'role' => $user->role,
+                'resource' => 'student_progress',
+                'targetStudentId' => $studentId,
+            ]);
+
+            return ApiError::response($request, 403, 'FORBIDDEN', 'You can only view your own progress.');
         }
 
         $row = $this->workflow->getStudentHours($studentId);

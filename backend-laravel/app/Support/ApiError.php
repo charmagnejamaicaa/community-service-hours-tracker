@@ -33,7 +33,8 @@ final class ApiError
         }
         $error['referenceId'] = self::refId($request);
 
-        return response()->json(['error' => $error], $status);
+                // Set the header here too: on a 401 the sign-in check runs before AssignReferenceId, so the middleware never sees it.
+        return response()->json(['error' => $error], $status, ['X-Reference-Id' => $error['referenceId']]);
     }
 
     /** @param list<string> $errors */

@@ -12,4 +12,12 @@ return [
     'retry_delays_ms' => env('RETRY_DELAYS_MS', '60000,300000'),
     // ok | timeout_once | always_down | reject   (fake provider; no real messages are sent)
     'notification_mode' => env('NOTIFICATION_MODE', 'ok'),
+
+    // --- Week 14 security ---
+    // How long a sign-in lasts, in minutes. After that the token is rejected and the user must sign in again.
+    'token_minutes' => max(1, (int) env('TOKEN_MINUTES', 60)),
+    // true = every /api request must use HTTPS (otherwise it is answered with 426).
+    'require_https' => (bool) env('REQUIRE_HTTPS', false),
+    // Password for the FICTIONAL demo accounts created by `php artisan db:seed`. Keep it in .env only.
+    'demo_user_password' => env('DEMO_USER_PASSWORD'),
 ];

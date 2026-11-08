@@ -25,19 +25,21 @@ final class WorkflowController
     ) {
     }
 
-    // --- Student registers an activity ---
+    // --- Student registers an activity (always for themselves) ---
     public function registerActivity(Request $request): JsonResponse
     {
+        $own = $this->ownStudentId($request);
         $b = $request->json()->all();
-        $studentId = $b['studentId'] ?? null;
         $name = $b['name'] ?? null;
         $organization = $b['organization'] ?? null;
         $activityDate = $b['activityDate'] ?? null;
 
-        $errors = [];
-        if (! is_int($studentId) || $studentId <= 0) {
-            $errors[] = 'Student id must be a positive whole number.';
+        // The student id is taken from the token. If the client sends a different one, refuse.
+        if (array_key_exists('studentId', $b) && $b['studentId'] !== $own) {
+            return $this->denyOwnership($request, 'activity_register', (is_int($b['studentId']) ? $b['studentId'] : null));
         }
+
+        $errors = [];
         if (! $this->isText($name, self::MAX_TEXT)) {
             $errors[] = 'Activity name is required (at most ' . self::MAX_TEXT . ' characters).';
         }
@@ -51,15 +53,15 @@ final class WorkflowController
             return ApiError::validation($request, $errors);
         }
 
-        if (! $this->repo->findStudent($studentId)) {
+        if (! $this->repo->findStudent($own)) {
             return ApiError::response($request, 404, 'NOT_FOUND', 'Student not found.');
         }
 
-        $activity = $this->repo->createActivity($studentId, trim($name), trim($organization), $activityDate);
+        $activity = $this->repo->createActivity($own, trim($name), trim($organization), $activityDate);
         $this->logger->info('activity_registered', [
             'referenceId' => ApiError::refId($request),
             'activityId' => $activity['id'],
-            'studentId' => $studentId,
+            'studentId' => $own,
         ]);
 
         return response()->json($activity, 201);
@@ -86,6 +88,9 @@ final class WorkflowController
         $activity = $this->repo->getActivity($activityId);
         if ($activity === null) {
             return ApiError::response($request, 404, 'NOT_FOUND', 'Activity not found.');
+        }
+        if ($activity['studentId'] !== $this->ownStudentId($request)) {
+            return $this->denyOwnership($request, 'activity_submit', $activity['studentId']);
         }
 
         $limitError = $this->dailyLimitError($activity['studentId'], $serviceDate, (float) $hours);
@@ -234,6 +239,9 @@ final class WorkflowController
         if ($current === null) {
             return ApiError::response($request, 404, 'NOT_FOUND', 'Submission not found.');
         }
+        if ($current['studentId'] !== $this->ownStudentId($request)) {
+            return $this->denyOwnership($request, 'submission_resubmit', $current['studentId']);
+        }
 
         $limitError = $this->dailyLimitError($current['studentId'], $serviceDate, (float) $hours, $submissionId);
         if ($limitError !== null) {
@@ -254,6 +262,26 @@ final class WorkflowController
     }
 
     // ---------- helpers ----------
+
+    /** The student record linked to the signed-in student account. */
+    private function ownStudentId(Request $request): int
+    {
+        return (int) $request->user()->student_id;
+    }
+
+    /** 403 plus a log line (IDs only) when someone touches another student's data. */
+    private function denyOwnership(Request $request, string $resource, ?int $targetStudentId): JsonResponse
+    {
+        $this->logger->warn('access_denied', [
+            'referenceId' => ApiError::refId($request),
+            'userId' => $request->user()->id,
+            'role' => $request->user()->role,
+            'resource' => $resource,
+            'targetStudentId' => $targetStudentId,
+        ]);
+
+        return ApiError::response($request, 403, 'FORBIDDEN', 'You can only change your own records.');
+    }
 
     private function isText(mixed $value, int $max): bool
     {
@@ -315,7 +343,8 @@ final class WorkflowController
             'action' => $action,
             'from' => $submission['status'],
             'to' => $to,
-            'role' => $request->attributes->get('role'),
+            'userId' => $request->user()->id,
+            'role' => $request->user()->role,
         ]);
 
         return ['submission' => $submission, 'to' => $to];

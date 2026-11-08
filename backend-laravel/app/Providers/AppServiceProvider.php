@@ -10,6 +10,9 @@ use App\Repositories\DbJobRepository;
 use App\Repositories\DbNotificationStore;
 use App\Services\FakeProvider;
 use App\Support\StructuredLog;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -25,6 +28,15 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        //
+        // Sign-in attempts: at most 5 per minute for the same address + email, and 30 per minute per address.
+        RateLimiter::for('login', function (Request $request) {
+            $email = $request->json('email');
+            $email = is_string($email) ? strtolower($email) : '';
+
+            return [
+                Limit::perMinute(5)->by('login|' . $request->ip() . '|' . $email),
+                Limit::perMinute(30)->by('login-ip|' . $request->ip()),
+            ];
+        });
     }
 }
