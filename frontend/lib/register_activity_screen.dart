@@ -7,16 +7,18 @@ import 'models.dart';
 import 'widgets.dart';
 
 class RegisterActivityScreen extends StatefulWidget {
-  const RegisterActivityScreen({super.key, required this.api});
+  const RegisterActivityScreen({super.key, required this.api, required this.studentId});
 
   final ApiClient api;
+
+  /// The signed-in student's own ID (from the login answer). The server checks it again.
+  final int? studentId;
 
   @override
   State<RegisterActivityScreen> createState() => _RegisterActivityScreenState();
 }
 
 class _RegisterActivityScreenState extends State<RegisterActivityScreen> {
-  final TextEditingController _studentId = TextEditingController(text: '1');
   final TextEditingController _name = TextEditingController();
   final TextEditingController _organization = TextEditingController();
   final TextEditingController _date = TextEditingController();
@@ -28,7 +30,6 @@ class _RegisterActivityScreenState extends State<RegisterActivityScreen> {
 
   @override
   void dispose() {
-    _studentId.dispose();
     _name.dispose();
     _organization.dispose();
     _date.dispose();
@@ -49,10 +50,10 @@ class _RegisterActivityScreenState extends State<RegisterActivityScreen> {
   }
 
   Future<void> _submit() async {
-    final studentId = int.tryParse(_studentId.text.trim());
+    final studentId = widget.studentId;
     final problems = <String>[];
-    if (studentId == null || studentId <= 0) {
-      problems.add('Enter a student ID (a whole number greater than 0).');
+    if (studentId == null) {
+      problems.add('Your account is not linked to a student record. Ask your coordinator.');
     }
     if (_name.text.trim().isEmpty) problems.add('Activity name is required.');
     if (_organization.text.trim().isEmpty) problems.add('Organization is required.');
@@ -112,12 +113,6 @@ class _RegisterActivityScreenState extends State<RegisterActivityScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextField(
-                  controller: _studentId,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Student ID', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 12),
                 TextField(
                   controller: _name,
                   maxLength: 150,

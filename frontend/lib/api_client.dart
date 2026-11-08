@@ -1,15 +1,17 @@
 // The ONLY place that talks to the backend. If an endpoint changes, only this file changes.
 //
-// Week 13: the role is sent in the demo header X-Demo-Role. Real sign-in replaces it in Week 14.
+// Week 14: every request (except login) carries the sign-in token as "Authorization: Bearer ...".
+// The token is kept in memory only (not in browser storage), so closing the tab signs the user out.
 
 import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'auth.dart';
 import 'models.dart';
 
-enum ApiErrorKind { network, validation, forbidden, notFound, conflict, server }
+enum ApiErrorKind { network, validation, unauthorized, forbidden, notFound, conflict, rateLimited, server }
 
 /// Every failure from the backend is turned into one of these, so screens can show
 /// the right message (network error, server error with a reference ID, and so on).
@@ -37,6 +39,58 @@ class ApiClient {
   final String baseUrl;
   final http.Client _client;
 
+  String? _token; // memory only
+  AuthUser? currentUser;
+
+  /// Called when the server says the token is missing, expired or invalid (HTTP 401).
+  /// The app uses it to go back to the login screen.
+  void Function()? onSessionExpired;
+
+  bool get isSignedIn => _token != null;
+
+  // ---------- Sign in / out ----------
+
+  Future<AuthUser> login(String email, String password) async {
+    final body = await _call(
+      'POST',
+      '/api/auth/login',
+      authenticated: false,
+      body: <String, dynamic>{'email': email, 'password': password},
+    );
+    final token = body['token'];
+    final user = body['user'];
+    final role = user is Map<String, dynamic> ? parseRole(user['role']) : null;
+    if (token is! String || user is! Map<String, dynamic> || role == null) {
+      throw const ApiException(ApiErrorKind.server, 'The server sent an unexpected sign-in answer.');
+    }
+    _token = token;
+    currentUser = AuthUser(
+      id: (user['id'] as num).toInt(),
+      name: user['name'] as String? ?? '',
+      role: role,
+      studentId: (user['studentId'] as num?)?.toInt(),
+      expiresAt: DateTime.tryParse(body['expiresAt'] as String? ?? '')?.toLocal(),
+    );
+    return currentUser!;
+  }
+
+  /// Asks the server to revoke the token, then forgets it. The token is forgotten even if the
+  /// request fails (for example when the server is down), so the user is always signed out here.
+  Future<void> logout() async {
+    try {
+      await _call('POST', '/api/auth/logout');
+    } on ApiException {
+      // Nothing more to do: the token is dropped below either way.
+    } finally {
+      _forgetSession();
+    }
+  }
+
+  void _forgetSession() {
+    _token = null;
+    currentUser = null;
+  }
+
   // ---------- Student ----------
 
   Future<Activity> registerActivity({
@@ -48,7 +102,6 @@ class ApiClient {
     final body = await _call(
       'POST',
       '/api/activities',
-      role: 'student',
       body: <String, dynamic>{
         'studentId': studentId,
         'name': name,
@@ -69,7 +122,6 @@ class ApiClient {
     final body = await _call(
       'POST',
       '/api/activities/$activityId/submissions',
-      role: 'student',
       body: <String, dynamic>{
         'hours': hours,
         'serviceDate': serviceDate,
@@ -88,7 +140,6 @@ class ApiClient {
     await _call(
       'PATCH',
       '/api/submissions/$submissionId/resubmit',
-      role: 'student',
       body: <String, dynamic>{
         'hours': hours,
         'serviceDate': serviceDate,
@@ -102,11 +153,10 @@ class ApiClient {
     return StudentProgress.fromJson(body);
   }
 
-  // ---------- Supervisor ----------
+  // ---------- Supervisor and coordinator ----------
 
-  /// [role] is `supervisor` or `coordinator`.
-  Future<List<Submission>> listSubmissions(String status, {required String role}) async {
-    final body = await _call('GET', '/api/submissions?status=$status', role: role);
+  Future<List<Submission>> listSubmissions(String status) async {
+    final body = await _call('GET', '/api/submissions?status=$status');
     final items = (body['items'] as List<dynamic>? ?? <dynamic>[]);
     return items.map((item) => Submission.fromJson(item as Map<String, dynamic>)).toList();
   }
@@ -115,7 +165,6 @@ class ApiClient {
     await _call(
       'PATCH',
       '/api/submissions/$submissionId/verify',
-      role: 'supervisor',
       body: <String, dynamic>{'decision': 'VERIFY'},
     );
   }
@@ -124,7 +173,6 @@ class ApiClient {
     await _call(
       'PATCH',
       '/api/submissions/$submissionId/verify',
-      role: 'supervisor',
       body: <String, dynamic>{'decision': 'REJECT', 'reason': reason},
     );
   }
@@ -132,7 +180,7 @@ class ApiClient {
   // ---------- Coordinator ----------
 
   Future<ApprovalResult> approve(int submissionId) async {
-    final body = await _call('PATCH', '/api/submissions/$submissionId/approve', role: 'coordinator');
+    final body = await _call('PATCH', '/api/submissions/$submissionId/approve');
     return ApprovalResult.fromJson(body);
   }
 
@@ -140,7 +188,6 @@ class ApiClient {
     await _call(
       'PATCH',
       '/api/submissions/$submissionId/correct',
-      role: 'coordinator',
       body: <String, dynamic>{'reason': reason},
     );
   }
@@ -167,17 +214,18 @@ class ApiClient {
   Future<Map<String, dynamic>> _call(
     String method,
     String path, {
-    String? role,
+    bool authenticated = true,
     Map<String, dynamic>? body,
   }) {
     final uri = Uri.parse('$baseUrl$path');
     final headers = <String, String>{
-      if (role != null) 'X-Demo-Role': role,
+      'Accept': 'application/json',
+      if (authenticated && _token != null) 'Authorization': 'Bearer $_token',
       if (body != null) 'Content-Type': 'application/json',
     };
     final encoded = body == null ? null : jsonEncode(body);
 
-    return _request(() {
+    return _request(authenticated, () {
       switch (method) {
         case 'GET':
           return _client.get(uri, headers: headers);
@@ -191,7 +239,7 @@ class ApiClient {
     });
   }
 
-  Future<Map<String, dynamic>> _request(Future<http.Response> Function() send) async {
+  Future<Map<String, dynamic>> _request(bool authenticated, Future<http.Response> Function() send) async {
     http.Response response;
     try {
       response = await send().timeout(const Duration(seconds: 10));
@@ -226,12 +274,23 @@ class ApiClient {
     switch (response.statusCode) {
       case 400:
         throw ApiException(ApiErrorKind.validation, message, referenceId: referenceId, details: details);
+      case 401:
+        // A 401 on a normal request means the token is missing, expired or invalid:
+        // forget it and send the user back to the login screen. A 401 on login just means
+        // the email or password was wrong, so the user stays on the login form.
+        if (authenticated) {
+          _forgetSession();
+          onSessionExpired?.call();
+        }
+        throw ApiException(ApiErrorKind.unauthorized, message, referenceId: referenceId);
       case 403:
         throw ApiException(ApiErrorKind.forbidden, message, referenceId: referenceId);
       case 404:
         throw ApiException(ApiErrorKind.notFound, message, referenceId: referenceId);
       case 409:
         throw ApiException(ApiErrorKind.conflict, message, referenceId: referenceId);
+      case 429:
+        throw ApiException(ApiErrorKind.rateLimited, message, referenceId: referenceId);
       default:
         throw ApiException(ApiErrorKind.server, message, referenceId: referenceId);
     }

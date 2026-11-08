@@ -15,6 +15,7 @@ class ErrorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isNetwork = error.kind == ApiErrorKind.network;
+    final isForbidden = error.kind == ApiErrorKind.forbidden;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -28,7 +29,7 @@ class ErrorView extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              isNetwork ? 'Connection problem' : 'Something went wrong',
+              isNetwork ? 'Connection problem' : (isForbidden ? 'Not allowed' : 'Something went wrong'),
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),

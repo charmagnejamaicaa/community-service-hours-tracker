@@ -1,5 +1,5 @@
 // Screen 2 in docs/screen-flow.md: Student Dashboard.
-// Week 13 has no sign-in yet, so the student ID is typed in. Real sign-in comes in Week 14.
+// A student sees their own progress (the ID comes from the sign-in). Coordinators and advisers type a student ID.
 
 import 'package:flutter/material.dart';
 
@@ -8,9 +8,12 @@ import 'models.dart';
 import 'widgets.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key, required this.api});
+  const DashboardScreen({super.key, required this.api, this.studentId});
 
   final ApiClient api;
+
+  /// Set for a signed-in student: the screen then shows only that student and has no ID box.
+  final int? studentId;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -37,7 +40,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _load() async {
-    final id = int.tryParse(_idController.text.trim());
+    final id = widget.studentId ?? int.tryParse(_idController.text.trim());
     if (id == null || id <= 0) {
       setState(() => _inputError = 'Enter a whole number greater than 0.');
       return;
@@ -74,6 +77,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           Text('Student Dashboard', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 12),
+          if (widget.studentId == null)
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

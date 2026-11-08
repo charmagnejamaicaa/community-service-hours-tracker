@@ -27,7 +27,6 @@ class _SubmissionQueueScreenState extends State<SubmissionQueueScreen> {
   int? _busyId;
 
   bool get _isVerification => widget.mode == QueueMode.verification;
-  String get _role => _isVerification ? 'supervisor' : 'coordinator';
   String get _status => _isVerification ? 'SUBMITTED' : 'VERIFIED';
 
   @override
@@ -42,7 +41,7 @@ class _SubmissionQueueScreenState extends State<SubmissionQueueScreen> {
       _error = null;
     });
     try {
-      final items = await widget.api.listSubmissions(_status, role: _role);
+      final items = await widget.api.listSubmissions(_status);
       if (!mounted) return;
       setState(() {
         _items = items;
