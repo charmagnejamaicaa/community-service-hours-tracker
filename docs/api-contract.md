@@ -4,6 +4,8 @@
 
 Base path: `/api` | Format: JSON | Dates: `YYYY-MM-DD` (dates) or ISO 8601 (timestamps)
 
+Implemented with Laravel 12 (`routes/api.php`). Every response carries an `X-Reference-Id` header; every error body carries the same `referenceId`, which also appears in the structured logs.
+
 **Roles (Week 13 stand-in):** the caller's role is sent in the header `X-Demo-Role` with the value `student`, `supervisor`, or `coordinator`. This is for testing only. Real authentication and role enforcement replace it in Week 14.
 
 ## Endpoints
