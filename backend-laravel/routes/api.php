@@ -17,7 +17,7 @@ Route::get('/health', [ApiController::class, 'health']);
 // Sign in. Limited to a few attempts per minute (see AppServiceProvider) to slow down password guessing.
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
 

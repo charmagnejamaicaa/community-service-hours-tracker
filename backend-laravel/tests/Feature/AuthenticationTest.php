@@ -126,11 +126,24 @@ class AuthenticationTest extends ApiTestCase
         $this->useToken($second)->getJson('/api/auth/me')->assertOk();
     }
 
-    public function test_errors_use_the_standard_format_with_a_reference_id(): void
+       public function test_errors_use_the_standard_format_with_a_reference_id(): void
     {
         $response = $this->useToken(null)->getJson('/api/students/1/progress');
         $response->assertStatus(401);
         $this->assertNotEmpty($response->json('error.referenceId'));
         $this->assertSame($response->json('error.referenceId'), $response->headers->get('X-Reference-Id'));
+    }
+
+    public function test_changing_a_users_role_revokes_their_existing_tokens(): void
+    {
+        $token = $this->tokenFor('student1@example.test');
+        $this->useToken($token)->getJson('/api/auth/me')->assertOk();
+
+        $user = User::where('email', 'student1@example.test')->first();
+        $user->update(['role' => 'adviser']);
+
+        $this->useToken($token)->getJson('/api/auth/me')
+            ->assertStatus(401)
+            ->assertJsonPath('error.code', 'UNAUTHENTICATED');
     }
 }

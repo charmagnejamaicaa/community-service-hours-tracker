@@ -115,7 +115,7 @@ final class WorkflowController
     }
 
     // --- Supervisor / coordinator: list submissions by status (default: waiting for verification) ---
-    public function listSubmissions(Request $request): JsonResponse
+        public function listSubmissions(Request $request): JsonResponse
     {
         $raw = $request->query('status', 'SUBMITTED');
         $status = is_string($raw) ? strtoupper($raw) : '';
@@ -123,9 +123,17 @@ final class WorkflowController
             return ApiError::validation($request, ['Status must be one of: ' . implode(', ', Workflow::STATUSES) . '.']);
         }
 
-        $items = $this->repo->listSubmissions($status);
+        $limitRaw = $request->query('limit');
+        $limit = $limitRaw === null ? 50 : filter_var($limitRaw, FILTER_VALIDATE_INT);
+        $offsetRaw = $request->query('offset');
+        $offset = $offsetRaw === null ? 0 : filter_var($offsetRaw, FILTER_VALIDATE_INT);
+        if ($limit === false || $limit < 1 || $limit > 100 || $offset === false || $offset < 0) {
+            return ApiError::validation($request, ['limit must be between 1 and 100, and offset must be 0 or greater.']);
+        }
 
-        return response()->json(['count' => count($items), 'items' => $items]);
+        $items = $this->repo->listSubmissions($status, $limit, $offset);
+
+        return response()->json(['count' => count($items), 'items' => $items, 'limit' => $limit, 'offset' => $offset]);
     }
 
     // --- Supervisor verifies or rejects ---

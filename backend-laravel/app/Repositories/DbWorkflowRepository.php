@@ -80,9 +80,17 @@ final class DbWorkflowRepository
     }
 
     /** @return list<array> */
-    public function listSubmissions(string $status): array
+        public function listSubmissions(string $status, int $limit = 50, int $offset = 0): array
     {
-        $rows = DB::select(self::SUBMISSION_SELECT . ' WHERE s.status = ? ORDER BY s.created_at, s.id', [$status]);
+        // Hard safety cap regardless of what's passed in, so this method can never
+        // return an unbounded result set even if called from somewhere new later.
+        $limit = max(1, min($limit, 100));
+        $offset = max(0, $offset);
+
+        $rows = DB::select(
+            self::SUBMISSION_SELECT . ' WHERE s.status = ? ORDER BY s.created_at, s.id LIMIT ? OFFSET ?',
+            [$status, $limit, $offset]
+        );
 
         return array_map(fn ($r) => $this->toSubmission($r), $rows);
     }

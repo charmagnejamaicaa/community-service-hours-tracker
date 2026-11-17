@@ -128,9 +128,31 @@ class AuthorizationTest extends ApiTestCase
         $this->useToken($this->tokenFor('supervisor@example.test'))->getJson('/api/students/1/progress')->assertStatus(403);
     }
 
-    public function test_a_student_cannot_list_submissions(): void
+       public function test_a_student_cannot_list_submissions(): void
     {
         $this->useToken($this->tokenFor('student1@example.test'))->getJson('/api/submissions')->assertStatus(403);
+    }
+
+    public function test_listing_submissions_is_paginated_and_capped(): void
+    {
+        // Seed several extra SUBMITTED rows beyond a small page size.
+        for ($i = 10; $i < 15; $i++) {
+            DB::table('submissions')->insert([
+                'id' => $i, 'activity_id' => 2, 'hours' => 1, 'service_date' => '2026-11-0' . ($i - 9),
+                'evidence_note' => 'bulk', 'status' => 'SUBMITTED',
+            ]);
+        }
+
+        $token = $this->tokenFor('coordinator@example.test');
+
+        $page = $this->useToken($token)->getJson('/api/submissions?status=SUBMITTED&limit=2&offset=0');
+        $page->assertOk();
+        $this->assertCount(2, $page->json('items'));
+        $this->assertSame(2, $page->json('limit'));
+        $this->assertSame(0, $page->json('offset'));
+
+        $tooBig = $this->useToken($token)->getJson('/api/submissions?status=SUBMITTED&limit=500');
+        $tooBig->assertStatus(400)->assertJsonPath('error.code', 'VALIDATION_ERROR');
     }
 
     // ---- input validation still works behind the login ----
@@ -178,5 +200,15 @@ class AuthorizationTest extends ApiTestCase
         $response = $this->useToken(null)->getJson('https://localhost/api/health');
         $response->assertOk();
         $this->assertNull($response->headers->get('Strict-Transport-Security'));
+    }
+        public function test_a_general_rate_limit_applies_to_authenticated_routes(): void
+    {
+        $token = $this->tokenFor('student1@example.test');
+        for ($i = 0; $i < 60; $i++) {
+            $this->useToken($token)->getJson('/api/auth/me')->assertOk();
+        }
+        $blocked = $this->useToken($token)->getJson('/api/auth/me');
+        $blocked->assertStatus(429)->assertJsonPath('error.code', 'RATE_LIMITED');
+        $this->assertNotNull($blocked->headers->get('Retry-After'));
     }
 }
